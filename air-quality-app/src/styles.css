@@ -1,0 +1,7 @@
+/* Globalni font */
+html, body {
+  font-family: 'Segoe UI';
+  background: #f4faf6; /* svetlo-zelena pozadina stranice */
+  margin: 0;
+  padding: 0;
+}
