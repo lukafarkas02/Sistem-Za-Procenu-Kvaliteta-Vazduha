@@ -1,0 +1,344 @@
+package rules.cepRules;
+
+import com.ftn.model.AirPollutionEvent;
+import com.ftn.model.messages.Warning;
+import java.time.LocalDateTime;
+
+// @expires garantuje da stariji fakti ne ostaju zauvek u working memory-ju -
+// mora biti >= najveći window korišćen u pravilima ispod.
+declare AirPollutionEvent
+    @role( event )
+    @timestamp( timestamp )
+    @expires( 10m )
+end
+
+declare AlertState
+    alertType : String
+    active    : boolean
+end
+
+
+// =============================================================================
+// INICIJALIZACIJA (samo jednom, na startu sesije)
+// =============================================================================
+
+rule "CEP - Init alert states"
+salience 2000
+when
+    not AlertState()
+then
+    insert(new AlertState("PM25_SPIKE", false));
+    insert(new AlertState("CORRELATED_SURGE", false));
+    insert(new AlertState("SUSTAINED_HAZARDOUS", false));
+    insert(new AlertState("PROLONGED_SMOG", false));
+    insert(new AlertState("WIND_DROP_EARLY_WARNING", false));
+    insert(new AlertState("AIR_RECOVERING", false));
+    insert(new AlertState("STABLE", false));
+    System.out.println(">> CEP: alert state-ovi inicijalizovani.");
+end
+
+
+// =============================================================================
+// 1. NAGLI SKOK PM2.5 (volatilnost u kliznom vremenskom prozoru)
+//
+// KLJUČNO: JEDAN accumulate prozor (window:time), JEDNO pravilo. Umesto
+// para detect/resolved koji gledaju NEZAVISNE prozore (što je ranije
+// izazivalo loop), ovde se prag za "ostani aktivan" i "postani aktivan"
+// razlikuje TERNARNIM izrazom nad ISTIM prozorom - histerezis bez
+// mogućnosti da dva pravila naizmenično okidaju jedno drugo.
+// =============================================================================
+
+rule "CEP - Evaluate PM25_SPIKE"
+no-loop true
+when
+    $state : AlertState(alertType == "PM25_SPIKE")
+
+    $max : Number() from accumulate(
+        AirPollutionEvent($v : pm25) over window:time(40s),
+        max($v)
+    )
+    $min : Number() from accumulate(
+        AirPollutionEvent($v : pm25) over window:time(40s),
+        min($v)
+    )
+then
+    double range = $max.doubleValue() - $min.doubleValue();
+
+    boolean shouldBeActive = $state.isActive()
+        ? (range >= 4.0)   // blaži prag da OSTANE aktivan
+        : (range >= 6.0);  // stroži prag da POSTANE aktivan
+
+    if (shouldBeActive != $state.isActive()) {
+        $state.setActive(shouldBeActive);
+        update($state);
+
+        Warning w = new Warning();
+        w.setType(shouldBeActive ? "PM25_SPIKE" : "PM25_SPIKE_RESOLVED");
+        w.setContent(shouldBeActive
+            ? "SUDDEN SPIKE: PM2.5 volatility has risen sharply in the last 40 seconds."
+            : "PM2.5 levels have stabilized.");
+        w.setTimestamp(LocalDateTime.now());
+        insert(w);
+
+        System.out.println(">> CEP: PM25_SPIKE -> " + shouldBeActive + " (range=" + range + ")");
+    }
+end
+
+
+// =============================================================================
+// 2. KORELISANI SKOK VIŠE ZAGAĐIVAČA
+// Isti princip - jedan zajednički window:time(40s), max-min raspon za oba
+// polutanta iz ISTOG vremenskog prozora.
+// =============================================================================
+
+rule "CEP - Evaluate CORRELATED_SURGE"
+no-loop true
+when
+    $state : AlertState(alertType == "CORRELATED_SURGE")
+
+    $maxPm25 : Number() from accumulate(
+        AirPollutionEvent($v : pm25) over window:time(40s),
+        max($v)
+    )
+    $minPm25 : Number() from accumulate(
+        AirPollutionEvent($v : pm25) over window:time(40s),
+        min($v)
+    )
+    $maxNo2 : Number() from accumulate(
+        AirPollutionEvent($v : no2) over window:time(40s),
+        max($v)
+    )
+    $minNo2 : Number() from accumulate(
+        AirPollutionEvent($v : no2) over window:time(40s),
+        min($v)
+    )
+then
+    double pm25Range = $maxPm25.doubleValue() - $minPm25.doubleValue();
+    double no2Range  = $maxNo2.doubleValue() - $minNo2.doubleValue();
+    boolean shouldBeActive = $state.isActive() ? (pm25Range >= 3.0 && no2Range >= 6.0): (pm25Range >= 5.0 && no2Range >= 10.0);
+    if (shouldBeActive != $state.isActive()) {
+        $state.setActive(shouldBeActive);
+        update($state);
+        Warning w = new Warning();
+        w.setType(shouldBeActive ? "CORRELATED_SURGE" : "CORRELATED_SURGE_RESOLVED");
+        w.setContent(shouldBeActive
+            ? "PATTERN DETECTED: PM2.5 and NO2 are rising together, suggesting a traffic or industrial pollution source."
+            : "The correlated PM2.5/NO2 surge has subsided.");
+        w.setTimestamp(LocalDateTime.now());
+        insert(w);
+        System.out.println(">> CEP: CORRELATED_SURGE -> " + shouldBeActive);
+    }
+end
+
+
+// =============================================================================
+// 3. OPASAN VAZDUH U KONTINUITETU
+// JEDAN broj (count hazardous readings) iz JEDNOG window:time prozora.
+// Histerezis kroz prag: 3+ hazardous u prozoru da SE AKTIVIRA, ali samo
+// 1+ da OSTANE aktivan (pošto stariji hazardous eventi prirodno ističu
+// iz prozora s vremenom, count polako opada dok ne padne na 0).
+// =============================================================================
+
+rule "CEP - Evaluate SUSTAINED_HAZARDOUS"
+no-loop true
+when
+    $state : AlertState(alertType == "SUSTAINED_HAZARDOUS")
+
+    $hazCount : Number() from accumulate(
+        AirPollutionEvent(pm25 >= 55.0 || pm10 >= 100.0 || no2 >= 180.0 || o3 >= 180.0) over window:time(60s),
+        count(1)
+    )
+then
+    int count = $hazCount.intValue();
+
+    boolean shouldBeActive = $state.isActive()
+        ? (count >= 1)
+        : (count >= 3);
+
+    if (shouldBeActive != $state.isActive()) {
+        $state.setActive(shouldBeActive);
+        update($state);
+
+        Warning w = new Warning();
+        w.setType(shouldBeActive ? "SUSTAINED_HAZARDOUS" : "SUSTAINED_HAZARDOUS_RESOLVED");
+        w.setContent(shouldBeActive
+            ? "SUSTAINED HAZARD: Air quality has remained hazardous over the last minute. Limit all outdoor activity."
+            : "Air quality is no longer hazardous.");
+        w.setTimestamp(LocalDateTime.now());
+        insert(w);
+
+        System.out.println(">> CEP: SUSTAINED_HAZARDOUS -> " + shouldBeActive + " (count=" + count + ")");
+    }
+end
+
+
+// =============================================================================
+// 4. DUGOTRAJNO ZADRŽAVANJE SMOGA
+// Isti princip - jedan count (pm25>45 & wind<2) preko window:time.
+// =============================================================================
+
+rule "CEP - Evaluate PROLONGED_SMOG"
+no-loop true
+when
+    $state : AlertState(alertType == "PROLONGED_SMOG")
+
+    $smogCount : Number() from accumulate(
+        AirPollutionEvent(pm25 > 45.0, windSpeed < 2.0) over window:time(60s),
+        count(1)
+    )
+then
+    int count = $smogCount.intValue();
+
+    boolean shouldBeActive = $state.isActive()
+        ? (count >= 1)
+        : (count >= 3);
+
+    if (shouldBeActive != $state.isActive()) {
+        $state.setActive(shouldBeActive);
+        update($state);
+
+        Warning w = new Warning();
+        w.setType(shouldBeActive ? "PROLONGED_SMOG" : "PROLONGED_SMOG_RESOLVED");
+        w.setContent(shouldBeActive
+            ? "PROLONGED SMOG: Pollution has remained high with almost no wind to disperse it over the last minute."
+            : "Wind has picked up - smog is dispersing.");
+        w.setTimestamp(LocalDateTime.now());
+        insert(w);
+
+        System.out.println(">> CEP: PROLONGED_SMOG -> " + shouldBeActive + " (count=" + count + ")");
+    }
+end
+
+
+// =============================================================================
+// 5. RANO UPOZORENJE - PAD VETRA
+// Dva RAZLIČITA po dužini window:time prozora (kratak "trenutni" i duži
+// "raniji"), ali OBA su vremenska i OBA se koriste u ISTOM pravilu -
+// nema dueling rules, samo dve komplementarne metrike iz iste evaluacije.
+// =============================================================================
+
+rule "CEP - Evaluate WIND_DROP_EARLY_WARNING"
+no-loop true
+when
+    $state : AlertState(alertType == "WIND_DROP_EARLY_WARNING")
+    $minWindRecent : Number() from accumulate(
+        AirPollutionEvent($w : windSpeed) over window:time(15s),
+        min($w)
+    )
+    $avgWindEarlier : Number() from accumulate(
+        AirPollutionEvent($w : windSpeed) over window:time(90s),
+        average($w)
+    )
+    $minPm25Recent : Number() from accumulate(
+        AirPollutionEvent($p : pm25) over window:time(15s),
+        min($p)
+    )
+    $maxPm25Recent : Number() from accumulate(
+        AirPollutionEvent($p : pm25) over window:time(15s),
+        max($p)
+    )
+then
+    double windNow = $minWindRecent.doubleValue();
+    double windEarlier = $avgWindEarlier.doubleValue();
+    boolean moderatePm25 = $minPm25Recent.doubleValue() > 20.0 && $maxPm25Recent.doubleValue() <= 45.0;
+    boolean shouldBeActive = $state.isActive() ? (windNow < 3.0) : (windNow < 1.5 && windEarlier > 3.0 && moderatePm25);
+    if (shouldBeActive != $state.isActive()) {
+        $state.setActive(shouldBeActive);
+        update($state);
+        Warning w = new Warning();
+        w.setType(shouldBeActive ? "WIND_DROP_EARLY_WARNING" : "WIND_DROP_EARLY_WARNING_RESOLVED");
+        w.setContent(shouldBeActive
+            ? "EARLY WARNING: Wind speed is dropping sharply while pollution is still moderate. Conditions may deteriorate soon."
+            : "Wind has returned to normal.");
+        w.setTimestamp(LocalDateTime.now());
+        insert(w);
+        System.out.println(">> CEP: WIND_DROP_EARLY_WARNING -> " + shouldBeActive);
+    }
+end
+
+
+// =============================================================================
+// 6. POBOLJŠANJE KVALITETA VAZDUHA
+// Max iz dužeg prozora vs. max iz kraćeg ("trenutnog") prozora - oba
+// vremenska, ista logika kao gore.
+// =============================================================================
+
+rule "CEP - Evaluate AIR_RECOVERING"
+no-loop true
+when
+    $state : AlertState(alertType == "AIR_RECOVERING")
+
+    $maxPm25Long : Number() from accumulate(
+        AirPollutionEvent($v : pm25) over window:time(90s),
+        max($v)
+    )
+    $maxPm25Recent : Number() from accumulate(
+        AirPollutionEvent($v : pm25) over window:time(15s),
+        max($v)
+    )
+then
+    double maxLong = $maxPm25Long.doubleValue();
+    double maxRecent = $maxPm25Recent.doubleValue();
+
+    boolean shouldBeActive = $state.isActive()
+        ? (maxRecent >= 35.0)
+        : (maxLong > 45.0 && (maxLong - maxRecent) >= 15.0);
+
+    if (shouldBeActive != $state.isActive()) {
+        $state.setActive(shouldBeActive);
+        update($state);
+
+        Warning w = new Warning();
+        w.setType(shouldBeActive ? "AIR_RECOVERING" : "AIR_RECOVERING_RESOLVED");
+        w.setContent(shouldBeActive
+            ? "GOOD NEWS: Air quality is improving - pollutant levels have dropped noticeably."
+            : "Air quality has stabilized at a good level.");
+        w.setTimestamp(LocalDateTime.now());
+        insert(w);
+
+        System.out.println(">> CEP: AIR_RECOVERING -> " + shouldBeActive);
+    }
+end
+
+
+// =============================================================================
+// 7. STABILIZACIJA (opšti reset)
+// Max-min raspon u kratkom prozoru, sa širim tolerancijom dok je već aktivan.
+// =============================================================================
+
+rule "CEP - Evaluate STABLE"
+no-loop true
+when
+    $state : AlertState(alertType == "STABLE")
+
+    $max : Number() from accumulate(
+        AirPollutionEvent($v : pm25) over window:time(20s),
+        max($v)
+    )
+    $min : Number() from accumulate(
+        AirPollutionEvent($v : pm25) over window:time(20s),
+        min($v)
+    )
+then
+    double range = $max.doubleValue() - $min.doubleValue();
+    double maxV = $max.doubleValue();
+
+    boolean shouldBeActive = $state.isActive()
+        ? (range < 15.0 && maxV < 40.0)
+        : (range < 10.0 && maxV < 35.0);
+
+    if (shouldBeActive != $state.isActive()) {
+        $state.setActive(shouldBeActive);
+        update($state);
+
+        if (shouldBeActive) {
+            Warning w = new Warning();
+            w.setType("STABLE");
+            w.setContent("PM2.5 levels have stabilized within a safe range.");
+            w.setTimestamp(LocalDateTime.now());
+            insert(w);
+        }
+
+        System.out.println(">> CEP: STABLE -> " + shouldBeActive + " (range=" + range + ")");
+    }
+end

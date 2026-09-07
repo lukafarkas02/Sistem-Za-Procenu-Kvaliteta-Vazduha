@@ -1,0 +1,486 @@
+package rules.basicRules;
+
+import com.ftn.model.Measurement;
+import com.ftn.model.Pollutant;
+import com.ftn.model.PollutantType;
+import com.ftn.model.AirQualityCategory;
+import com.ftn.model.DecisionExplanations;
+import com.ftn.model.AirQualityInfo;
+import com.ftn.model.UserType;
+import com.ftn.model.RiskType;
+import com.ftn.model.AirQualityInput;
+import com.ftn.model.HealthCheckReminder;
+import com.ftn.model.SmartHomeCommand;
+import com.ftn.model.OutdoorActivityPlan;
+import com.ftn.model.WeatherConditions;
+
+import java.util.List;
+import java.util.ArrayList;
+import java.time.LocalDateTime;
+
+// Pomoćna funkcija za kreiranje objašnjenja
+function DecisionExplanations createExplanation(Measurement measurement) {
+    DecisionExplanations explanation = new DecisionExplanations();
+    List<String> allPollutants = new ArrayList<>();
+    for (Pollutant p : measurement.getPollutants()) {
+        allPollutants.add(p.getPollutantType().name() + " = " + p.getValue() + " [" + p.getStatus() + "]");
+    }
+    explanation.setInfluencingPollutants(allPollutants);
+    return explanation;
+}
+
+// =============================================================================
+// NIVO 1: KATEGORIZACIJA POLUTANATA (Sirova merenja -> Status polutanta)
+// =============================================================================
+
+// --- 1. PM2.5 ---
+rule "NIVO 1 - PM2.5 HAZARDOUS"
+when
+    $input : AirQualityInput( $measurement : pollutantMeasurment)
+    $p : Pollutant( pollutantType == PollutantType.PM2_5, value > 55) from $measurement.pollutants
+then
+    $p.setStatus(AirQualityCategory.HAZARDOUS);
+end
+
+rule "NIVO 1 - PM2.5 POOR"
+when
+    $input : AirQualityInput( $measurement : pollutantMeasurment)
+    $p : Pollutant( pollutantType == PollutantType.PM2_5, value > 35 && value <= 55) from $measurement.pollutants
+then
+    $p.setStatus(AirQualityCategory.POOR);
+end
+
+rule "NIVO 1 - PM2.5 MODERATE"
+when
+    $input : AirQualityInput( $measurement : pollutantMeasurment)
+    $p : Pollutant( pollutantType == PollutantType.PM2_5, value > 15 && value <= 35) from $measurement.pollutants
+then
+    $p.setStatus(AirQualityCategory.MODERATE);
+end
+
+rule "NIVO 1 - PM2.5 GOOD"
+when
+    $input : AirQualityInput( $measurement : pollutantMeasurment)
+    $p : Pollutant( pollutantType == PollutantType.PM2_5, value <= 15) from $measurement.pollutants
+then
+    $p.setStatus(AirQualityCategory.GOOD);
+end
+
+
+// --- 2. PM10 ---
+rule "NIVO 1 - PM10 HAZARDOUS"
+when
+    $input : AirQualityInput( $measurement : pollutantMeasurment)
+    $p : Pollutant( pollutantType == PollutantType.PM10, value > 100) from $measurement.pollutants
+then
+    $p.setStatus(AirQualityCategory.HAZARDOUS);
+end
+
+rule "NIVO 1 - PM10 POOR"
+when
+    $input : AirQualityInput( $measurement : pollutantMeasurment)
+    $p : Pollutant( pollutantType == PollutantType.PM10, value > 50 && value <= 100) from $measurement.pollutants
+then
+    $p.setStatus(AirQualityCategory.POOR);
+end
+
+rule "NIVO 1 - PM10 MODERATE"
+when
+    $input : AirQualityInput( $measurement : pollutantMeasurment)
+    $p : Pollutant( pollutantType == PollutantType.PM10, value > 25 && value <= 50) from $measurement.pollutants
+then
+    $p.setStatus(AirQualityCategory.MODERATE);
+end
+
+rule "NIVO 1 - PM10 GOOD"
+when
+    $input : AirQualityInput( $measurement : pollutantMeasurment)
+    $p : Pollutant( pollutantType == PollutantType.PM10, value <= 25) from $measurement.pollutants
+then
+    $p.setStatus(AirQualityCategory.GOOD);
+end
+
+
+// --- 3. NO2 ---
+rule "NIVO 1 - NO2 HAZARDOUS"
+when
+    $input : AirQualityInput( $measurement : pollutantMeasurment)
+    $p : Pollutant( pollutantType == PollutantType.NO2, value > 180) from $measurement.pollutants
+then
+    $p.setStatus(AirQualityCategory.HAZARDOUS);
+end
+
+rule "NIVO 1 - NO2 POOR"
+when
+    $input : AirQualityInput( $measurement : pollutantMeasurment)
+    $p : Pollutant( pollutantType == PollutantType.NO2, value > 90 && value <= 180) from $measurement.pollutants
+then
+    $p.setStatus(AirQualityCategory.POOR);
+end
+
+rule "NIVO 1 - NO2 MODERATE"
+when
+    $input : AirQualityInput( $measurement : pollutantMeasurment)
+    $p : Pollutant( pollutantType == PollutantType.NO2, value > 40 && value <= 90) from $measurement.pollutants
+then
+    $p.setStatus(AirQualityCategory.MODERATE);
+end
+
+rule "NIVO 1 - NO2 GOOD"
+when
+    $input : AirQualityInput( $measurement : pollutantMeasurment)
+    $p : Pollutant( pollutantType == PollutantType.NO2, value <= 40) from $measurement.pollutants
+then
+    $p.setStatus(AirQualityCategory.GOOD);
+end
+
+
+// --- 4. O3 (Ozon) ---
+rule "NIVO 1 - O3 HAZARDOUS"
+when
+    $input : AirQualityInput( $measurement : pollutantMeasurment)
+    $p : Pollutant( pollutantType == PollutantType.O3, value > 180) from $measurement.pollutants
+then
+    $p.setStatus(AirQualityCategory.HAZARDOUS);
+end
+
+rule "NIVO 1 - O3 POOR"
+when
+    $input : AirQualityInput( $measurement : pollutantMeasurment)
+    $p : Pollutant( pollutantType == PollutantType.O3, value > 140 && value <= 180) from $measurement.pollutants
+then
+    $p.setStatus(AirQualityCategory.POOR);
+end
+
+rule "NIVO 1 - O3 MODERATE"
+when
+    $input : AirQualityInput( $measurement : pollutantMeasurment)
+    $p : Pollutant( pollutantType == PollutantType.O3, value > 100 && value <= 140) from $measurement.pollutants
+then
+    $p.setStatus(AirQualityCategory.MODERATE);
+end
+
+rule "NIVO 1 - O3 GOOD"
+when
+    $input : AirQualityInput( $measurement : pollutantMeasurment)
+    $p : Pollutant( pollutantType == PollutantType.O3, value <= 100) from $measurement.pollutants
+then
+    $p.setStatus(AirQualityCategory.GOOD);
+end
+
+
+// --- 5. CO2 ---
+rule "NIVO 1 - CO2 HAZARDOUS"
+when
+    $input : AirQualityInput( $measurement : pollutantMeasurment)
+    $p : Pollutant( pollutantType == PollutantType.CO2, value > 2000) from $measurement.pollutants
+then
+    $p.setStatus(AirQualityCategory.HAZARDOUS);
+end
+
+rule "NIVO 1 - CO2 POOR"
+when
+    $input : AirQualityInput( $measurement : pollutantMeasurment)
+    $p : Pollutant( pollutantType == PollutantType.CO2, value > 1000 && value <= 2000) from $measurement.pollutants
+then
+    $p.setStatus(AirQualityCategory.POOR);
+end
+
+rule "NIVO 1 - CO2 MODERATE"
+when
+    $input : AirQualityInput( $measurement : pollutantMeasurment)
+    $p : Pollutant( pollutantType == PollutantType.CO2, value > 600 && value <= 1000) from $measurement.pollutants
+then
+    $p.setStatus(AirQualityCategory.MODERATE);
+end
+
+rule "NIVO 1 - CO2 GOOD"
+when
+    $input : AirQualityInput( $measurement : pollutantMeasurment)
+    $p : Pollutant( pollutantType == PollutantType.CO2, value <= 600) from $measurement.pollutants
+then
+    $p.setStatus(AirQualityCategory.GOOD);
+end
+
+
+// =============================================================================
+// NIVO 2: KREIRANJE BAZNOG AirQualityInfo
+// (guard sada vezan za konkretan $input, ne globalno)
+// =============================================================================
+
+rule "NIVO 2 - Set AirQualityInfo to HAZARDOUS"
+when
+    $input : AirQualityInput( $measurement : pollutantMeasurment, user != null )
+    exists( Pollutant(status == AirQualityCategory.HAZARDOUS) from $measurement.pollutants )
+    not (AirQualityInfo(input == $input))
+then
+    AirQualityInfo info = new AirQualityInfo();
+    info.setInput($input);
+    info.setAirCategory(AirQualityCategory.HAZARDOUS);
+    info.setExplanation(createExplanation($measurement));
+    insert(info);
+end
+
+rule "NIVO 2 - Set AirQualityInfo to VERY_POOR"
+when
+    $input : AirQualityInput( $measurement : pollutantMeasurment, user != null )
+    not Pollutant(status == AirQualityCategory.HAZARDOUS) from $measurement.pollutants
+    Number(intValue >= 2) from accumulate(
+        $p : Pollutant(status == AirQualityCategory.POOR) from $measurement.pollutants,
+        count($p)
+    )
+    not (AirQualityInfo(input == $input))
+then
+    AirQualityInfo info = new AirQualityInfo();
+    info.setInput($input);
+    info.setAirCategory(AirQualityCategory.VERY_POOR);
+    info.setExplanation(createExplanation($measurement));
+    insert(info);
+end
+
+rule "NIVO 2 - Set AirQualityInfo to POOR"
+when
+    $input : AirQualityInput( $measurement : pollutantMeasurment, user != null )
+    not Pollutant(status == AirQualityCategory.HAZARDOUS) from $measurement.pollutants
+    Number(intValue == 1) from accumulate(
+        $p : Pollutant(status == AirQualityCategory.POOR) from $measurement.pollutants,
+        count($p)
+    )
+    not (AirQualityInfo(input == $input))
+then
+    AirQualityInfo info = new AirQualityInfo();
+    info.setInput($input);
+    info.setAirCategory(AirQualityCategory.POOR);
+    info.setExplanation(createExplanation($measurement));
+    insert(info);
+end
+
+rule "NIVO 2 - Set AirQualityInfo to MODERATE"
+when
+    $input : AirQualityInput( $measurement : pollutantMeasurment, user != null )
+    not Pollutant(status == AirQualityCategory.HAZARDOUS) from $measurement.pollutants
+    not Pollutant(status == AirQualityCategory.POOR) from $measurement.pollutants
+    exists( Pollutant(status == AirQualityCategory.MODERATE) from $measurement.pollutants )
+    not (AirQualityInfo(input == $input))
+then
+    AirQualityInfo info = new AirQualityInfo();
+    info.setInput($input);
+    info.setAirCategory(AirQualityCategory.MODERATE);
+    info.setExplanation(createExplanation($measurement));
+    insert(info);
+end
+
+rule "NIVO 2 - Set AirQualityInfo to GOOD"
+when
+    $input : AirQualityInput( $measurement : pollutantMeasurment, user != null )
+    not Pollutant(status == AirQualityCategory.HAZARDOUS) from $measurement.pollutants
+    not Pollutant(status == AirQualityCategory.POOR) from $measurement.pollutants
+    not Pollutant(status == AirQualityCategory.MODERATE) from $measurement.pollutants
+    not (AirQualityInfo(input == $input))
+then
+    AirQualityInfo info = new AirQualityInfo();
+    info.setInput($input);
+    info.setAirCategory(AirQualityCategory.GOOD);
+    info.setExplanation(createExplanation($measurement));
+    insert(info);
+end
+
+
+// =============================================================================
+// NIVO 3: METEOROLOŠKA KOREKCIJA (Uticaj vremena na zagađenje)
+// no-loop true dodato: bez njega, update($info) izaziva ponovnu proveru istog
+// pravila protiv sopstvene izmene, pa se kategorija obara za dva nivoa umesto
+// za jedan (npr. VERY_POOR -> POOR -> MODERATE u istom ciklusu)
+// =============================================================================
+
+rule "NIVO 3 - Strong wind disperses pollution"
+    no-loop true
+when
+    $info : AirQualityInfo( airCategory == AirQualityCategory.POOR || airCategory == AirQualityCategory.VERY_POOR )
+    $weather : WeatherConditions( windSpeed > 8.0 ) // Jak vetar preko 8 m/s
+then
+    if ($info.getAirCategory() == AirQualityCategory.VERY_POOR) {
+        $info.setAirCategory(AirQualityCategory.POOR);
+    } else {
+        $info.setAirCategory(AirQualityCategory.MODERATE);
+    }
+    update($info);
+end
+
+rule "NIVO 3 - High humidity and no wind trap pollution"
+    no-loop true
+when
+    $info : AirQualityInfo( airCategory == AirQualityCategory.MODERATE || airCategory == AirQualityCategory.POOR )
+    $weather : WeatherConditions( windSpeed < 1.5, humidity > 80.0 ) // Bez vetra i visoka vlažnost
+then
+    if ($info.getAirCategory() == AirQualityCategory.MODERATE) {
+        $info.setAirCategory(AirQualityCategory.POOR);
+    } else {
+        $info.setAirCategory(AirQualityCategory.VERY_POOR);
+    }
+    update($info);
+end
+
+
+// =============================================================================
+// NIVO 4: SPECIFIČNE AKCIJE PO TIPOVA KORISNIKA (Na osnovu konačnog stanja)
+// =============================================================================
+
+// 4. A) RIZIČNE GRUPE - DECA (CHILD)
+rule "NIVO 4 - Health Check Reminder for Children"
+when
+    $info : AirQualityInfo(
+        airCategory == AirQualityCategory.POOR ||
+        airCategory == AirQualityCategory.VERY_POOR ||
+        airCategory == AirQualityCategory.HAZARDOUS,
+        input.user != null,
+        input.user.userType == UserType.RISK_GROUP,
+        input.user.riskType == RiskType.CHILD
+    )
+then
+    HealthCheckReminder reminder = new HealthCheckReminder();
+    reminder.setUserId($info.getInput().getUser().getId());
+    reminder.setMessage("UPOZORENJE ZA DECU: Visok nivo zagađenja! Deca ne bi trebalo da borave na otvorenom igralištu i sportskim terenima.");
+    reminder.setUrgent($info.getAirCategory() == AirQualityCategory.HAZARDOUS);
+    reminder.setTimestamp(LocalDateTime.now());
+
+    insert(reminder);
+end
+
+// 4. B) RIZIČNE GRUPE - STARIJE OSOBE (ELDERLY)
+rule "NIVO 4 - Health Check Reminder for Elderly"
+when
+    $info : AirQualityInfo(
+        airCategory == AirQualityCategory.POOR ||
+        airCategory == AirQualityCategory.VERY_POOR ||
+        airCategory == AirQualityCategory.HAZARDOUS,
+        input.user != null,
+        input.user.userType == UserType.RISK_GROUP,
+        input.user.riskType == RiskType.ELDERLY
+    )
+then
+    HealthCheckReminder reminder = new HealthCheckReminder();
+    reminder.setUserId($info.getInput().getUser().getId());
+    reminder.setMessage("UPOZORENJE ZA STARIJE OSOBE: Izbegavajte duge šetnje i izlazak u vreme najvećeg zagađenja. Pratite krvni pritisak i opšte stanje.");
+    reminder.setUrgent($info.getAirCategory() == AirQualityCategory.HAZARDOUS);
+    reminder.setTimestamp(LocalDateTime.now());
+
+    insert(reminder);
+end
+
+// 4. C) RIZIČNE GRUPE - HRONIČNI BOLESNICI (CHRONIC)
+rule "NIVO 4 - Health Check Reminder for Chronic Patients"
+when
+    $info : AirQualityInfo(
+        airCategory == AirQualityCategory.POOR ||
+        airCategory == AirQualityCategory.VERY_POOR ||
+        airCategory == AirQualityCategory.HAZARDOUS,
+        input.user != null,
+        input.user.userType == UserType.RISK_GROUP,
+        input.user.riskType == RiskType.CHRONIC
+    )
+then
+    HealthCheckReminder reminder = new HealthCheckReminder();
+    reminder.setUserId($info.getInput().getUser().getId());
+    reminder.setMessage("HITAN APEL ZA HRONIČNE BOLESNIKE: Obavezno uzmite propisanu terapiju (pumpice, lekove za srce/pritisak). Smanjite bilo kakvu fizičku aktivnost na otvorenom.");
+    reminder.setUrgent(true);
+    reminder.setTimestamp(LocalDateTime.now());
+
+    insert(reminder);
+end
+
+// 4. D) RIZIČNE GRUPE - TRUDNICE (PREGNANT)
+rule "NIVO 4 - Health Check Reminder for Pregnant Women"
+when
+    $info : AirQualityInfo(
+        airCategory == AirQualityCategory.POOR ||
+        airCategory == AirQualityCategory.VERY_POOR ||
+        airCategory == AirQualityCategory.HAZARDOUS,
+        input.user != null,
+        input.user.userType == UserType.RISK_GROUP,
+        input.user.riskType == RiskType.PREGNANT
+    )
+then
+    HealthCheckReminder reminder = new HealthCheckReminder();
+    reminder.setUserId($info.getInput().getUser().getId());
+    reminder.setMessage("UPOZORENJE ZA TRUDNICE: Zagađenje vazduha može nepovoljno uticati na plod i respiratorni sistem. Preporučuje se boravak u prostorijama sa prečišćivačem vazduha.");
+    reminder.setUrgent($info.getAirCategory() == AirQualityCategory.HAZARDOUS);
+    reminder.setTimestamp(LocalDateTime.now());
+
+    insert(reminder);
+end
+
+// 4. E) INSTITUCIJE -> Visoko zagađenje
+rule "NIVO 4 - Smart Home Command for Institutions (High Pollution)"
+when
+    $info : AirQualityInfo(
+        airCategory == AirQualityCategory.VERY_POOR ||
+        airCategory == AirQualityCategory.HAZARDOUS,
+        input.user != null,
+        input.user.userType == UserType.INSTITUTION
+    )
+then
+    SmartHomeCommand command = new SmartHomeCommand();
+    command.setInstitutionId($info.getInput().getUser().getId());
+    command.setCloseSmartWindows(true);
+    command.setHvacMode("RECIRCULATION_AND_FILTER");
+    command.setAirPurifierPower("MAX");
+
+    insert(command);
+end
+
+// 4. F) INSTITUCIJE -> Umereno/Loše zagađenje
+rule "NIVO 4 - Moderate Smart Home Command for Institutions"
+when
+    $info : AirQualityInfo(
+        airCategory == AirQualityCategory.POOR,
+        input.user != null,
+        input.user.userType == UserType.INSTITUTION
+    )
+then
+    SmartHomeCommand command = new SmartHomeCommand();
+    command.setInstitutionId($info.getInput().getUser().getId());
+    command.setCloseSmartWindows(false);
+    command.setHvacMode("STANDARD_FILTER");
+    command.setAirPurifierPower("MEDIUM");
+
+    insert(command);
+end
+
+// 4. G) OBIČNI GRAĐANI -> Izmena plana aktivnosti
+rule "NIVO 4 - Outdoor Activity Adjustment for Citizens"
+when
+    $info : AirQualityInfo(
+        airCategory == AirQualityCategory.POOR ||
+        airCategory == AirQualityCategory.VERY_POOR ||
+        airCategory == AirQualityCategory.HAZARDOUS,
+        input.user != null,
+        input.user.userType == UserType.CITIZEN
+    )
+then
+    OutdoorActivityPlan plan = new OutdoorActivityPlan();
+    plan.setUserId($info.getInput().getUser().getId());
+    plan.setCancelOutdoorSports(true);
+    plan.setSuggestedAlternative("Trening u zatvorenom prostoru / Odmor");
+    plan.setNote("Ograničite vreme na otvorenom zbog povišenog zagađenja i vremenskih uslova.");
+
+    insert(plan);
+end
+
+// 4. H) SVI KORISNICI -> Bezbedan vazduh (Good ili Moderate)
+rule "NIVO 4 - Safe Outdoor Plan for All Users"
+when
+    $info : AirQualityInfo(
+        airCategory == AirQualityCategory.GOOD ||
+        airCategory == AirQualityCategory.MODERATE,
+        input.user != null
+    )
+then
+    OutdoorActivityPlan plan = new OutdoorActivityPlan();
+    plan.setUserId($info.getInput().getUser().getId());
+    plan.setCancelOutdoorSports(false);
+    plan.setSuggestedAlternative("Sve aktivnosti na otvorenom su bezbedne.");
+    plan.setNote("Kvalitet vazduha i vremenski uslovi su u granicama prihvatljivog.");
+
+    insert(plan);
+end

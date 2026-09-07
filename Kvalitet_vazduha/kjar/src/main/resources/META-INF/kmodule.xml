@@ -1,0 +1,18 @@
+<kmodule xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://jboss.org/kie/6.0.0/kmodule">
+
+    <kbase name="rulesCEP" packages="cepRules" eventProcessingMode="stream">
+        <ksession name="k-session-cep" type="stateful" clockType="realtime"/>
+    </kbase>
+        
+    <kbase name="basicRules" packages="basicRules">
+        <ksession name="basic-ksession"/>
+    </kbase>
+
+    <kbase name="rulesNewCEP" packages="rules/cepRules" eventProcessingMode="stream">
+        <ksession name="k-session-new-cep" type="stateful" clockType="realtime"/>
+    </kbase>
+
+    <kbase name="backward-activity-kbase" packages="backwardActivity">
+        <ksession name="backward-activity-ksession"/>
+    </kbase>
+</kmodule>

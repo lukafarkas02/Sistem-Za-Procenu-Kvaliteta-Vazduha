@@ -1,0 +1,19 @@
+<kmodule xmlns="http://www.drools.org/xsd/kmodule" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+    <kbase name="rulesCEP" packages="rules/cepRules" eventProcessingMode="stream">
+        <ksession name="k-session-cep" type="stateful" clockType="realtime"/>
+    </kbase>
+
+    <kbase name="basicRules" packages="rules/basicRules">
+        <ksession name="basic-ksession"/>
+    </kbase>
+
+    <kbase name="backward-activity-kbase" packages="rules/backwardActivity">
+        <ksession name="backward-activity-ksession"/>
+    </kbase>
+
+    <kbase name="templateKbase" packages="rules/airPollutantsTemplate">
+        <ksession name="k-session-template"/>
+    </kbase>
+</kmodule>
